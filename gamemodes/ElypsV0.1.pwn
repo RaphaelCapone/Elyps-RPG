@@ -1054,5 +1054,3 @@ public OnPlayerClickPlayer(playerid, clickedplayerid, source)
 {
 	return 1;
 }
-new test;
-test = 1;

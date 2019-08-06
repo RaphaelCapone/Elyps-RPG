@@ -651,6 +651,7 @@ public StartTutorialForPlayer(playerid){
 		}
 		case 5:{
 			//===========================Objects Loading + Actors==========================================
+			//IntroObjects types: 0 - Actors ::: 1 - Objects ::: 2 - Vehicles
 			IntroObjects[playerid][2][0] = CreateVehicle(412,1667.9530,-806.0679,56.2625,299.0900,171,171, -1);
 			SetVehicleVirtualWorld(IntroObjects[playerid][2][0], GetPlayerVirtualWorld(playerid));
 			LinkVehicleToInterior(IntroObjects[playerid][2][0], GetPlayerInterior(playerid));
@@ -658,14 +659,16 @@ public StartTutorialForPlayer(playerid){
 			IntroObjects[playerid][0][0] = CreateDynamicActor(107, 1665.2905, -804.3958, 55.8668, -60.0000, 1, 100, GetPlayerVirtualWorld(playerid), GetPlayerInterior(playerid), playerid);
 			ApplyDynamicActorAnimation(IntroObjects[playerid][0][0], "SHOP", "SHP_GUN_AIM", 4.0, 1, 0, 0, 0, 0);
 
-			IntroObjects[playerid][0][1] = CreateDynamicActor(104, 1667.9333,-797.5499,55.8541,163.9448);
+			IntroObjects[playerid][0][1] = CreateDynamicActor(104, 1667.9333,-797.5499,55.8541,163.9448, 1, 100, GetPlayerVirtualWorld(playerid), GetPlayerInterior(playerid), playerid);
 			ApplyDynamicActorAnimation(IntroObjects[playerid][0][1], "SHOP", "SHP_GUN_AIM", 4.0, 1, 0, 0, 0, 0);
 
-			IntroObjects[playerid][0][2] = CreateDynamicActor(103, 1670.8167,-800.3084,55.6557,127.2845);
+			IntroObjects[playerid][0][2] = CreateDynamicActor(103, 1670.8167,-800.3084,55.6557,127.2845, 1, 100, GetPlayerVirtualWorld(playerid), GetPlayerInterior(playerid), playerid);
 			ApplyDynamicActorAnimation(IntroObjects[playerid][0][2], "SHOP", "SHP_GUN_AIM", 4.0, 1, 0, 0, 0, 0);
 
-			IntroObjects[playerid][0][3] = CreateDynamicActor(106, 1660.0460,-803.8052,56.6396,299.3530);
+			IntroObjects[playerid][0][3] = CreateDynamicActor(106, 1660.0460,-803.8052,56.6396,299.3530, 1, 100, GetPlayerVirtualWorld(playerid), GetPlayerInterior(playerid), playerid);
 			ApplyDynamicActorAnimation(IntroObjects[playerid][0][3], "SHOP", "SHP_GUN_AIM", 4.0, 1, 0, 0, 0, 0);
+			
+			ApplyDynamicActorAnimation(IntroObjects[playerid][0][0], "SHOP", "SHP_GUN_AIM", 4.0, 1, 0, 0, 0, 0);
 			
 			IntroObjects[playerid][1][0] = CreateObject(353, 1665.598022, -804.399658, 56.770793, 0.000000, 0.000000, 48.099945, 300.00); 
 			IntroObjects[playerid][1][1] = CreateObject(353, 1660.330810, -803.809936, 57.030944, -1.799999, -2.700000, 42.699943, 300.00); 

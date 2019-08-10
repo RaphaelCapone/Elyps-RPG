@@ -99,7 +99,7 @@ new pTutorialStep[MAX_PLAYERS],
 					  //[a][b][c]
 new Float:SpawnLocations[][][] = {
 	{{1642.1813,-2238.3936,-2.7150},
-	{1686.0148,-2238.4246,-2.7134}} // spawn LS cu 1 locatii
+	{1686.0148,-2238.4246,-2.7134}} // spawn LS cu 2 locatii
 };
 // ======== End Player Variables =========
 main()

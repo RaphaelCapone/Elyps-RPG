@@ -44,10 +44,10 @@ native WP_Hash(buffer[], len, const str[]);
 #if !defined strcpy
     #define strcpy(%0,%1) strcat((%0[0] = EOS, %0), %1)
 #endif
-#define MYSQL_HOST	"localhost"
-#define MYSQL_USER	"root"
-#define MYSQL_PASS	""
-#define MYSQL_DB	"elypsgm"
+#define MYSQL_HOST	"host"
+#define MYSQL_USER	"user"
+#define MYSQL_PASS	"password"
+#define MYSQL_DB	"database name"
 #define GM_VERSION	"Elyps"
 #define SCM			SendClientMessage
 #define MAX_PASSWORD_LENGTH 25
@@ -92,9 +92,14 @@ enum pInfo{
 new PlayerInfo[MAX_PLAYERS][pInfo];
 new pTutorialStep[MAX_PLAYERS],
 	pTutorialTimer[MAX_PLAYERS];
+/*new Float:SpawnLocations[][][] = {
+	{{1642.1813,-2238.3936,-2.7150}}, //spawn 1 - 1
+	{{1686.0148,-2238.4246,-2.7134}} //spawn 1 - 2
+};*/
+					  //[a][b][c]
 new Float:SpawnLocations[][][] = {
-	{{1642.1813,-2238.3936,-2.7150}},
-	{{1686.0148,-2238.4246,-2.7134}}
+	{{1642.1813,-2238.3936,-2.7150},
+	{1686.0148,-2238.4246,-2.7134}} // spawn LS cu 1 locatii
 };
 // ======== End Player Variables =========
 main()
@@ -701,8 +706,12 @@ public StartTutorialForPlayer(playerid){
 		}
 		case 7:{  
 			if(PlayerInfo[playerid][pSpawnLocation] == 1){
-				
-				SetSpawnInfo(playerid, 0, PlayerInfo[playerid][pSkin], SpawnLocations[PlayerInfo[playerid][pSpawnLocation]][random(2)][0], SpawnLocations[PlayerInfo[playerid][pSpawnLocation]][random(2)][1], SpawnLocations[PlayerInfo[playerid][pSpawnLocation]][random(2)][2], 0, 0, 0, 0, 0, 0, 0);
+				new randomspawnlocation = random(2);
+				new Float:SpawnLocationCoords[3];
+				SpawnLocationCoords[0] = SpawnLocations[PlayerInfo[playerid][pSpawnLocation]][randomspawnlocation][0];
+				SpawnLocationCoords[1] = SpawnLocations[PlayerInfo[playerid][pSpawnLocation]][randomspawnlocation][0];
+				SpawnLocationCoords[2] = SpawnLocations[PlayerInfo[playerid][pSpawnLocation]][randomspawnlocation][0];
+				SetSpawnInfo(playerid, 0, PlayerInfo[playerid][pSkin], SpawnLocationCoords[0], SpawnLocationCoords[1], SpawnLocationCoords[2], 0, 0, 0, 0, 0, 0, 0);
 			}
 		}
 	}

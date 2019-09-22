@@ -35,15 +35,18 @@ native WP_Hash(buffer[], len, const str[]);
 #include <sscanf2>
 #include <Pawn.CMD>
 //
+#include <fly>
 #include <elyps_inc\textdraws>
 //Defines
+#define function%0(%1) \
+		forward%0(%1); public%0(%1)
 #define PawnPlus 0
 #if !defined isnull
     #define isnull(%1) ((!(%1[0])) || (((%1[0]) == '\1') && (!(%1[1]))))
 #endif
-#if !defined strcpy
+/*#if !defined strcpy
     #define strcpy(%0,%1) strcat((%0[0] = EOS, %0), %1)
-#endif
+#endif*/
 #define MYSQL_HOST	"host"
 #define MYSQL_USER	"user"
 #define MYSQL_PASS	"password"
@@ -52,6 +55,7 @@ native WP_Hash(buffer[], len, const str[]);
 #define SCM			SendClientMessage
 #define MAX_PASSWORD_LENGTH 25
 #define MAX_INTRO_OBJECTS 3
+#define MAX_MAP_ICONS 100
 //***** Dialog IDs *****//
 #define DIALOG_PASSWORD 				1
 #define DIALOG_CONFIRM_PASSWORD 		2
@@ -60,6 +64,7 @@ native WP_Hash(buffer[], len, const str[]);
 #define DIALOG_GENDER					5
 #define DIALOG_INVALID_TEXTDRAW			6
 #define DIALOG_LOCATION					7
+#define DIALOG_LOGIN					8
 //***** End Dialog IDs *****//
 //***** SERVER COLORS *****//
 #define COLOR_ERROR 0xd33f3fFF
@@ -69,6 +74,15 @@ new MySQL:SQL;
 new IntroObjects[MAX_PLAYERS][MAX_INTRO_OBJECTS][5];
 /*new IntroActors[][4];
 new IntroActorWeapons[4];*/
+enum MapIconVars{
+	iID,
+	iType,
+	Float:iPosX,
+	Float:iPosY,
+	Float:iPosZ,
+};
+new TotalMapIcons;
+new MapIconVar[MAX_MAP_ICONS][MapIconVars];
 //******** End Global Variables ********
 // ======== Player Variables =========
 enum RegisterSteps{
@@ -78,16 +92,22 @@ enum RegisterSteps{
 	rAge,
 	rGender
 };
+new IsOnDialogSelection[MAX_PLAYERS];
 new pRegisterSteps[MAX_PLAYERS][RegisterSteps];
 enum pInfo{
+	pID,
 	pNormalName[MAX_PLAYER_NAME],
+	pScore,
 	pLogged, // 1- Logged/Registred 2- Register Step 3- Intro/Tutorial step
 	pPassword[256],
+	pPassword2[256],
 	pEmail[80],
+	pFaction,
 	pAge,
 	pGender,
 	pSkin[2],
-	pSpawnLocation
+	pSpawnLocation,
+	pRegistrationTime[20]
 };
 new PlayerInfo[MAX_PLAYERS][pInfo];
 new pTutorialStep[MAX_PLAYERS],
@@ -98,8 +118,10 @@ new pTutorialStep[MAX_PLAYERS],
 };*/
 					  //[a][b][c]
 new Float:SpawnLocations[][][] = {
-	{{1642.1813,-2238.3936,-2.7150},
-	{1686.0148,-2238.4246,-2.7134}} // spawn LS cu 2 locatii
+	{{1642.1813,-2238.3936,-2.7150, 186.0318},
+	{1686.0148,-2238.4246,-2.7134, 186.0318}},	// spawn LS cu 1 locatii
+	{{1674.2988,1447.8303,10.7829,264.9921},
+	{1663.8861,1429.2826,10.7880,264.5104}}
 };
 // ======== End Player Variables =========
 main()
@@ -111,8 +133,9 @@ main()
 
 //=============== FORWARDURI =================
 forward MySQLCheckAccount(playerid);
-forward ChangeLoginTextDrawPreviewModel(playerid, LR);
+forward ChangeRegTextDrawPreviewModel(playerid, LR);
 forward StartTutorialForPlayer(playerid);
+forward LoadPlayerData(playerid);
 //=============== FORWARDURI END =================
 
 //=+=+=+=+= Functii utile =========================
@@ -121,6 +144,11 @@ forward StartTutorialForPlayer(playerid);
 	GetPlayerName(playerid, name, MAX_PLAYER_NAME);
 	return name;
 }
+/*stock strcpy(dest[], src[], size = sizeof(dest))
+{
+    dest[0] = EOS;
+    return strcat(dest, src, size);
+}*/
 //native SetPlayerPosEx(playerid, Float:x, Float:y, Float:z, VirtualWorld = 0, Interior = 0)
 stock SetPlayerPosEx(playerid, Float:x, Float:y, Float:z, VirtualWorld = 0, Interior = 0){
 	SetPlayerPos(playerid, x, y, z);
@@ -131,6 +159,8 @@ stock SetPlayerPosEx(playerid, Float:x, Float:y, Float:z, VirtualWorld = 0, Inte
 //=+=+=+=+= Functii utile END =========================
 public OnGameModeInit()
 {
+	//Server Settings
+	UsePlayerPedAnims();
 //	AddPlayerClass(0,1958.3783,1343.1572,1100.3746,269.1425,-1,-1,-1,-1,-1,-1);
 	SetGameModeText(GM_VERSION);
 	SQL = mysql_connect(MYSQL_HOST, MYSQL_USER, MYSQL_PASS, MYSQL_DB);
@@ -145,9 +175,62 @@ public OnGameModeInit()
 	}
 	else printf("Server succesfully connected to MySQL database!");
 	LoadGlobalTextDraws();
+	LoadMapIcons();
 	return 1;
 }
-
+stock ShowPlayerLoginTXD(playerid, bool:show = true){
+	if(show == true)
+	{
+		for(new i; i<sizeof(gLoginTD);i++){
+			if(i==16) continue;
+			TextDrawShowForPlayer(playerid, gLoginTD[i]);
+		}
+		PlayerTextDrawHide(playerid, pLoginTD[playerid][0]);
+		SelectTextDraw(playerid, 0xc0cde5FF);
+		PlayerInfo[playerid][pLogged] = 4;
+	}
+	else if(show==false){
+		for(new i; i<sizeof(gLoginTD);i++){
+			TextDrawHideForPlayer(playerid, gLoginTD[i]);
+		}
+		PlayerTextDrawHide(playerid, pLoginTD[playerid][0]);
+		CancelSelectTextDraw(playerid);		
+	}
+	return 1;
+}
+stock ShowPlayerRegisterTXD(playerid, bool:show = true){
+	if(show){
+		SelectTextDraw(playerid, 0xc0cde5FF);
+		for(new i; i<=13; i++) TextDrawShowForPlayer(playerid, gRegisterTD[i]);
+		for(new i = 21; i<= 22; i++) TextDrawShowForPlayer(playerid, gRegisterTD[i]);
+		for(new i=26; i<=29; i++) TextDrawShowForPlayer(playerid, gRegisterTD[i]);
+		for(new i=30; i<=31; i++) TextDrawShowForPlayer(playerid, gRegisterTD[i]);
+		for(new i=0; i<sizeof(pRegisterTD[])-1; i++) {
+			PlayerTextDrawShow(playerid, pRegisterTD[playerid][i]);
+			if(i==1 || i==2 || i==3 || i==5 || i==0)
+			{
+				PlayerTextDrawSetString(playerid, pRegisterTD[playerid][i], "LD_CHAT:thumbdn");
+			}
+		}
+	}
+	else{
+		for(new i=0; i<sizeof(gRegisterTD); i++){
+			TextDrawHideForPlayer(playerid, gRegisterTD[i]);
+		}
+		for(new i;i<sizeof(pRegisterTD[]); i++){
+			PlayerTextDrawHide(playerid, pRegisterTD[playerid][i]);
+		}
+	}
+	return 1;
+}
+function PlayerStopSound(playerid){
+	PlayerPlaySound(playerid, 0, 0, 0, 0);
+	return 1;
+}
+stock ShowPlayerDialogEx(playerid, dialogid, style,const caption[],const info[],const button1[],const button2[]){
+	IsOnDialogSelection[playerid] = 1;
+	return ShowPlayerDialog(playerid, dialogid, style, caption, info, button1, button2);
+}
 public OnGameModeExit()
 {
 	return 1;
@@ -156,6 +239,8 @@ public OnGameModeExit()
 public OnPlayerRequestClass(playerid, classid)
 {	
 	if(IsPlayerNPC(playerid)) return 1;
+	if(PlayerInfo[playerid][pLogged] == 1) SpawnPlayer(playerid);
+	DisableConsoleMSGsForPlayer(playerid);
 	TogglePlayerSpectating(playerid, true);
 	MySQLCheckAccount(playerid);
 	InterpolateCameraPos(playerid, 2157.884277, 1778.892822, 109.327987, 2051.111816, 1715.612548, 36.595863, 29000);
@@ -175,36 +260,72 @@ public MySQLCheckAccount(playerid)
 	result = mysql_query(SQL, string);
 	cache_get_row_count(registred);
 	if(registred == 1){
-		SCM(playerid, -1, "Esti inregistrat!");
+		cache_get_value_name(0, "password",PlayerInfo[playerid][pPassword]);
+		ShowPlayerLoginTXD(playerid, true);
 	}
 	else ShowPlayerRegisterTXD(playerid, true), PlayerInfo[playerid][pLogged] = 2;
 	cache_delete(result);
 	return 1;
 }
-stock ShowPlayerRegisterTXD(playerid, bool:show = true){
-	if(show){
-		SelectTextDraw(playerid, 0xc0cde5FF);
-		for(new i; i<=13; i++) TextDrawShowForPlayer(playerid, gLoginTD[i]);
-		for(new i = 21; i<= 22; i++) TextDrawShowForPlayer(playerid, gLoginTD[i]);
-		for(new i=26; i<=29; i++) TextDrawShowForPlayer(playerid, gLoginTD[i]);
-		for(new i=30; i<=31; i++) TextDrawShowForPlayer(playerid, gLoginTD[i]);
-		for(new i=0; i<sizeof(pLoginTD[])-1; i++) {
-			PlayerTextDrawShow(playerid, pLoginTD[playerid][i]);
-			if(i==1 || i==2 || i==3 || i==5 || i==0)
-			{
-				PlayerTextDrawSetString(playerid, pLoginTD[playerid][i], "LD_CHAT:thumbdn");
-			}
+public LoadPlayerData(playerid){
+	//Select Player Account from database
+	new Cache:cache, mysqlstr[190];
+	mysql_format(SQL, mysqlstr, sizeof(mysqlstr), "SELECT * FROM `accounts` WHERE `username` = '%e'", GetPName(playerid));
+	cache = mysql_query(SQL, mysqlstr);
+	
+	//Load Player Variables
+	cache_get_value_name_int(0, "ID", PlayerInfo[playerid][pID]);
+	cache_get_value_name_int(0, "spawn_location", PlayerInfo[playerid][pSpawnLocation]);
+	cache_get_value_name(0, "username", PlayerInfo[playerid][pNormalName]);
+	cache_get_value_name(0, "email", PlayerInfo[playerid][pEmail]);
+	cache_get_value_name(0, "date_registred", PlayerInfo[playerid][pRegistrationTime]);
+	cache_get_value_name_int(0, "faction", PlayerInfo[playerid][pFaction]);
+	cache_get_value_name_int(0, "skin", PlayerInfo[playerid][pSkin][0]);
+	cache_get_value_name_int(0, "score", PlayerInfo[playerid][pScore]); SetPlayerScore(playerid, PlayerInfo[playerid][pScore]);
+	
+	cache_delete(cache);
+	
+	PlayerInfo[playerid][pLogged] = 1;
+	//Set Player Spawn Info
+	switch(PlayerInfo[playerid][pFaction]){
+		case 0:{ // civil
+			new randomm = random(2);
+			SetSpawnInfo(playerid, 0, PlayerInfo[playerid][pSkin][0], SpawnLocations[PlayerInfo[playerid][pSpawnLocation]-1][randomm][0], SpawnLocations[PlayerInfo[playerid][pSpawnLocation]-1][randomm][1], SpawnLocations[PlayerInfo[playerid][pSpawnLocation]-1][randomm][2], SpawnLocations[PlayerInfo[playerid][pSpawnLocation]-1][randomm][3], 0, 0, 0, 0, 0, 0);
 		}
 	}
-	else{
-		for(new i=0; i<sizeof(gLoginTD); i++){
-			TextDrawHideForPlayer(playerid, gLoginTD[i]);
+	TogglePlayerSpectating(playerid, false);
+	TogglePlayerControllable(playerid, true);
+	EnableConsoleMSGsForPlayer(playerid, 0);
+	SpawnPlayer(playerid);
+}
+LoadMapIcons(){
+	new Cache:cache, string[100], sum;
+	mysql_format(SQL, string, sizeof(string), "SELECT * FROM `map_icons`");
+	cache = mysql_query(SQL, string);
+	cache_get_row_count(sum);
+	if(sum>0){
+		for(new i=1, b;i<=sum;i++){
+			new positionstr[80];
+			b = i-1;
+			mysql_format(SQL, string, sizeof(string), "SELECT * FROM `map_icons` WHERE `id` = '%d'");
+			cache = mysql_query(SQL, string);
+			cache_get_value_name(b, "position", positionstr);
+			cache_get_value_name_int(b, "type", MapIconVar[i][iType]);
+			sscanf(positionstr, "p<,>fff", MapIconVar[i][iPosX], MapIconVar[i][iPosY], MapIconVar[i][iPosZ]);
+			MapIconVar[i][iID] = CreateDynamicMapIcon(MapIconVar[i][iPosX], MapIconVar[i][iPosY], MapIconVar[i][iPosZ], MapIconVar[i][iType], 0);
+			TotalMapIcons++;
 		}
-		for(new i;i<sizeof(pLoginTD[]); i++){
-			PlayerTextDrawHide(playerid, pLoginTD[playerid][i]);
-		}
+		printf("%d map icons loaded.", sum);
 	}
+	cache_delete(cache);
 	return 1;
+}
+stock SearchIDForMapIcon(){
+	for(new i=1;i<=TotalMapIcons+1;i++){
+		if(MapIconVar[i][iID] >= 1) continue;
+		return i;
+	}
+	return false;
 }
 CMD:txd(playerid)
 {
@@ -224,6 +345,39 @@ CMD:intro(playerid){
 	pTutorialStep[playerid] = 1;
 	StartTutorialForPlayer(playerid);
 }
+CMD:spawncar(playerid, params[]){
+	new carid, color1, color2, Float:coords[6], vehid;
+	if(sscanf(params, "iii", carid, color1, color2)) return SCM(playerid, -1, "Syntax: /spawnveh <vehicle id> <color 1> <color 2>");
+	if(carid < 400 || carid > 611) return SCM(playerid, -1, "ERROR: Invalid vehicle id.");
+	GetPlayerPos(playerid, coords[0],coords[1],coords[2]);
+	GetPlayerCameraPos(playerid, coords[3], coords[4], coords[5]);
+	vehid = CreateVehicle(carid, coords[0], coords[1], coords[2], coords[3], color1, color2, 0);
+	PutPlayerInVehicle(playerid, vehid, 0);
+	return 1;
+}
+CMD:flymode(playerid){
+
+	new isonfly = GetPVarInt(playerid, "afly");
+	if(isonfly == 0) StartFly(playerid), SetPVarInt(playerid, "afly", 1), SCM(playerid, -1, "[]Fly mode activated!");
+	else StopFly(playerid), SetPVarInt(playerid, "afly", 0), SCM(playerid, -1, "[]Fly mode activated!");
+	return 1;
+}
+CMD:createmapiconhere(playerid, params[]){
+	if(TotalMapIcons > MAX_MAP_ICONS - 1) return SCM(playerid, -1, "The limit of max icon object has exceed.");
+	new type, string[100], posstr[100];
+	if(sscanf(params, "i", type)) return SCM(playerid, -1, "Syntax: /createmapiconhere <icon model>");
+	new Float:pPos[3];
+	GetPlayerPos(playerid, pPos[0], pPos[1], pPos[2]);
+	format(posstr, sizeof(posstr), "%f,%f,%f", pPos[0], pPos[1], pPos[2]);
+	mysql_format(SQL, string, sizeof(string), "INSERT INTO `map_icons`(`position`, `type`) VALUES ('%s', '%d')", posstr, type);
+	mysql_query(SQL, string);
+	new id = SearchIDForMapIcon();
+	MapIconVar[id][iID] = CreateDynamicMapIcon(pPos[0], pPos[1], pPos[2], type, 0);
+	MapIconVar[id][iType] = type;
+	TotalMapIcons++;
+	printf("DEBUG: id: %d, Icon ID: %d, Total Map Icons: %d", MapIconVar[id][iID], id, TotalMapIcons);
+	return 1;
+}
 //============ Functii Primare END ===============
 public OnPlayerConnect(playerid)
 {
@@ -232,24 +386,26 @@ public OnPlayerConnect(playerid)
 	return 1;
 }
 ResetVars(playerid){
-	static t[pInfo];
-	static l[RegisterSteps];
+	new t[pInfo];
+	new l[RegisterSteps];
 	pRegisterSteps[playerid] = l;
 	new s[MAX_PASSWORD_LENGTH+1] = EOS;
 	SetPVarString(playerid, "pConfirmPass", s);
 	DeletePVar(playerid, "pPassConf");
 	PlayerInfo[playerid] = t;
+	IsOnDialogSelection[playerid] = 0;
 }
 public OnPlayerDisconnect(playerid, reason)
 {
 	DeletePVar(playerid, "pTextShow");
 	DeletePVar(playerid, "pConfirmPass");
+	DeletePVar(playerid, "afly"), StopFly(playerid);
 	return 1;
 }
 
 public OnPlayerSpawn(playerid)
 {
-	SCM(playerid, -1, "Te-ai spawnat plm.");
+//	SCM(playerid, -1, "Te-ai spawnat plm.");
 	return 1;
 }
 
@@ -259,32 +415,33 @@ public OnPlayerDeath(playerid, killerid, reason)
 }
 public OnPlayerClickTextDraw(playerid, Text:clickedid)
 {
-	if(clickedid == gLoginTD[7])
+	if(IsOnDialogSelection[playerid] == 1) return 0;
+	if(clickedid == gRegisterTD[7])
 	{
 		ShowPlayerDialog(playerid, DIALOG_PASSWORD, DIALOG_STYLE_PASSWORD, "Please type your password", sprintf("Max password length: %d\nMin password length: 6", MAX_PASSWORD_LENGTH), "OK", "");
 	}
-	else if(clickedid == gLoginTD[9])
+	else if(clickedid == gRegisterTD[9])
 	{
 		ShowPlayerDialog(playerid, DIALOG_CONFIRM_PASSWORD, DIALOG_STYLE_PASSWORD, "Please retype your password", "Confirm your password.", "OK", "");
 	}
-	else if(clickedid == gLoginTD[11])
+	else if(clickedid == gRegisterTD[11])
 	{
 		ShowPlayerDialog(playerid, DIALOG_EMAIL, DIALOG_STYLE_INPUT, "Email", "Please type you email\nto be able to recover your\npassword in the future.", "Ok", "");
 	}
-	else if(clickedid == gLoginTD[13])
+	else if(clickedid == gRegisterTD[13])
 	{
 		ShowPlayerDialog(playerid, DIALOG_AGE, DIALOG_STYLE_INPUT, "Type your age", "Please type your age here.", "Ok", "");
 	}
-	else if(clickedid == gLoginTD[31])
+	else if(clickedid == gRegisterTD[31])
 	{
 		ShowPlayerDialog(playerid, DIALOG_GENDER, DIALOG_STYLE_MSGBOX, "Choose your gender", "Please choose your gender.", "Male", "Female");
 	}
-	else if(clickedid == gLoginTD[28] || clickedid == gLoginTD[29]){
-		if(PlayerInfo[playerid][pGender] == 0) return TextDrawShowForPlayer(playerid, gLoginTD[33]), TextDrawShowForPlayer(playerid, gLoginTD[32]);
-		if(clickedid == gLoginTD[28]) ChangeLoginTextDrawPreviewModel(playerid, 2);
-		else if(clickedid == gLoginTD[29]) ChangeLoginTextDrawPreviewModel(playerid, 1);
+	else if(clickedid == gRegisterTD[28] || clickedid == gRegisterTD[29]){
+		if(PlayerInfo[playerid][pGender] == 0) return TextDrawShowForPlayer(playerid, gRegisterTD[33]), TextDrawShowForPlayer(playerid, gRegisterTD[32]);
+		if(clickedid == gRegisterTD[28]) ChangeRegTextDrawPreviewModel(playerid, 2);
+		else if(clickedid == gRegisterTD[29]) ChangeRegTextDrawPreviewModel(playerid, 1);
 	}
-	else if(clickedid == gLoginTD[21]){
+	else if(clickedid == gRegisterTD[21]){
 		new j;
 		for(new i; i<sizeof(pRegisterSteps[]); i++)
 		{
@@ -293,7 +450,7 @@ public OnPlayerClickTextDraw(playerid, Text:clickedid)
 			}
 			else{
 				for(new k = 22; k<26; k++){
-					TextDrawShowForPlayer(playerid, gLoginTD[k]);
+					TextDrawShowForPlayer(playerid, gRegisterTD[k]);
 				}
 				break;
 			}
@@ -302,15 +459,31 @@ public OnPlayerClickTextDraw(playerid, Text:clickedid)
 			ShowPlayerDialog(playerid, DIALOG_LOCATION, DIALOG_STYLE_MSGBOX, "Choose your spawn location", "{e0e0e0}Please choose your preffered spawn loctaion\n{ff6a26}LS {e0e0e0}- {544fff}L{e0e0e0}os {544fff}S{e0e0e0}antos\n{e5741d}LV - {646adb}L{e0e0e0}as {646adb}V{e0e0e0}enturas", "LS", "LV");
 		}
 	}
-	else if(clickedid == Text:INVALID_TEXT_DRAW){
-		if(PlayerInfo[playerid][pLogged] == 2) ShowPlayerDialog(playerid, DIALOG_INVALID_TEXTDRAW, DIALOG_STYLE_MSGBOX, "{db2323}!!! {dbdbdb}[warning]:Return to register {db2323}!!!", "It seems that you left from the register selection.\nTo return back please click Return or you will be kicked\nfrom the server.", "Return", "Quit");
+	if(clickedid == gLoginTD[12]){
+		ShowPlayerDialogEx(playerid, DIALOG_LOGIN, DIALOG_STYLE_INPUT, "Write your password", " ", "Ok", "Cancel");
 	}
-/*	if(clickedid == gLoginTD[7] || clickedid == gLoginTD[29] || clickedid == gLoginTD[30]){
+	if(clickedid == gLoginTD[14]){
+		if(!strcmp(PlayerInfo[playerid][pPassword2], PlayerInfo[playerid][pPassword]) && strlen(PlayerInfo[playerid][pPassword2]) >= 1){
+			TextDrawHideForPlayer(playerid, gLoginTD[16]);
+			LoadPlayerData(playerid);
+			ShowPlayerLoginTXD(playerid, false);
+			GameTextForPlayer(playerid, "~b~Welcome back~w~!", 2400, 6);
+//			PlayerPlaySound(playerid, 182, 0, 0, 0);
+			PlayerPlaySound(playerid, 1068, 0, 0, 0);
+			SetTimerEx("PlayerStopSound", 2400, false, "i", playerid);
+		}
+		else TextDrawShowForPlayer(playerid, gLoginTD[16]);
+	}
+	else if(clickedid == Text:INVALID_TEXT_DRAW){
+		if(PlayerInfo[playerid][pLogged] == 2) ShowPlayerDialog(playerid, DIALOG_INVALID_TEXTDRAW, DIALOG_STYLE_MSGBOX, "{db2323}!!! {dbdbdb}[warning]:Return to register {db2323}!!!", "It seems that you left from the register step.\nTo return back please click Return or you will be kicked\nfrom the server.", "Return", "Quit");
+		else if(PlayerInfo[playerid][pLogged] == 4) ShowPlayerDialog(playerid, DIALOG_INVALID_TEXTDRAW, DIALOG_STYLE_MSGBOX, "{db2323}!!! {dbdbdb}[warning]:Return to login {db2323}!!!", "It seems that you left from the login step.\nTo return back please click Return or you will be kicked\nfrom the server.", "Return", "Quit");
+	}
+/*	if(clickedid == gRegisterTD[7] || clickedid == gRegisterTD[29] || clickedid == gRegisterTD[30]){
 		SCM(playerid, -1, "Test");
 	}*/
 	return 1;
 }
-public ChangeLoginTextDrawPreviewModel(playerid, LR){ // L = LEFT = 2 // R = RIGHT = 1
+public ChangeRegTextDrawPreviewModel(playerid, LR){ // L = LEFT = 2 // R = RIGHT = 1
 	if(LR == 1 && PlayerInfo[playerid][pSkin][1] >= 0 && PlayerInfo[playerid][pSkin][1] <= 4){
 		if(PlayerInfo[playerid][pSkin][1] < 4) PlayerInfo[playerid][pSkin][1]++;
 	}
@@ -318,7 +491,7 @@ public ChangeLoginTextDrawPreviewModel(playerid, LR){ // L = LEFT = 2 // R = RIG
 		if(PlayerInfo[playerid][pSkin][1] > 0) PlayerInfo[playerid][pSkin][1]--;
 	}
 	PlayerInfo[playerid][pSkin][0] = CivilSkins[PlayerInfo[playerid][pGender]-1][PlayerInfo[playerid][pSkin][1]];
-	PlayerTextDrawHide(playerid, pLoginTD[playerid][4]), PlayerTextDrawSetPreviewModel(playerid, pLoginTD[playerid][4], CivilSkins[PlayerInfo[playerid][pGender]-1][PlayerInfo[playerid][pSkin][1]]), PlayerTextDrawShow(playerid, pLoginTD[playerid][4]);	
+	PlayerTextDrawHide(playerid, pRegisterTD[playerid][4]), PlayerTextDrawSetPreviewModel(playerid, pRegisterTD[playerid][4], CivilSkins[PlayerInfo[playerid][pGender]-1][PlayerInfo[playerid][pSkin][1]]), PlayerTextDrawShow(playerid, pRegisterTD[playerid][4]);	
 	return 1;
 }
 public OnVehicleSpawn(vehicleid)
@@ -330,10 +503,23 @@ public OnVehicleDeath(vehicleid, killerid)
 {
 	return 1;
 }
-
+stock SendLocalPlayerMessage(playerid, text[], area = 50){
+	new Float:pos[3], pVW = GetPlayerVirtualWorld(playerid), pINT = GetPlayerInterior(playerid);
+	GetPlayerPos(playerid, pos[0], pos[1], pos[2]);
+	new string[128];
+	format(string, sizeof(string), "%s: %s", GetPName(playerid), text);
+	foreach(new i:Player){
+		if(IsPlayerInRangeOfPoint(i, area, pos[0], pos[1], pos[2]) && GetPlayerVirtualWorld(i) == pVW && GetPlayerVirtualWorld(i) == pINT){
+			SendClientMessage(i, -1, string);
+		}
+	}
+	return 1;
+}
 public OnPlayerText(playerid, text[])
 {
-	return 1;
+	if(PlayerInfo[playerid][pLogged] != 1) return 0;
+	SendLocalPlayerMessage(playerid, text, 50);
+	return 0;
 }
 
 public OnPlayerCommandText(playerid, cmdtext[])
@@ -474,6 +660,7 @@ public OnVehicleStreamOut(vehicleid, forplayerid)
 
 public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 {
+	IsOnDialogSelection[playerid] = 0;
 	switch(dialogid)
 	{
 		case DIALOG_PASSWORD:{
@@ -481,32 +668,32 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 			new y=0;
 			if(strlen(inputtext) < 6){
 				y=1;
-				PlayerTextDrawShow(playerid, pLoginTD[playerid][6]), TextDrawShowForPlayer(playerid, gLoginTD[14]), PlayerTextDrawSetString(playerid, pLoginTD[playerid][0], "LD_CHAT:thumbdn"), PlayerTextDrawSetString(playerid, pLoginTD[playerid][6], "your_password_is_too_short(min_6_characters)");
+				PlayerTextDrawShow(playerid, pRegisterTD[playerid][6]), TextDrawShowForPlayer(playerid, gRegisterTD[14]), PlayerTextDrawSetString(playerid, pRegisterTD[playerid][0], "LD_CHAT:thumbdn"), PlayerTextDrawSetString(playerid, pRegisterTD[playerid][6], "your_password_is_too_short(min_6_characters)");
 			}
 			else if(strlen(inputtext) > 25){
 				y=1;
-				PlayerTextDrawShow(playerid, pLoginTD[playerid][6]), TextDrawShowForPlayer(playerid, gLoginTD[14]), PlayerTextDrawSetString(playerid, pLoginTD[playerid][0], "LD_CHAT:thumbdn"), PlayerTextDrawSetString(playerid, pLoginTD[playerid][6], "your_password_is_too_long(max_25_characters)");
+				PlayerTextDrawShow(playerid, pRegisterTD[playerid][6]), TextDrawShowForPlayer(playerid, gRegisterTD[14]), PlayerTextDrawSetString(playerid, pRegisterTD[playerid][0], "LD_CHAT:thumbdn"), PlayerTextDrawSetString(playerid, pRegisterTD[playerid][6], "your_password_is_too_long(max_25_characters)");
 			}
 			if(strfind(inputtext, "%") != -1){
 				y=1;
-				PlayerTextDrawShow(playerid, pLoginTD[playerid][6]), TextDrawShowForPlayer(playerid, gLoginTD[14]), PlayerTextDrawSetString(playerid, pLoginTD[playerid][0], "LD_CHAT:thumbdn"), PlayerTextDrawSetString(playerid, pLoginTD[playerid][6], "your_password_contain_unnallowed_characters!");
+				PlayerTextDrawShow(playerid, pRegisterTD[playerid][6]), TextDrawShowForPlayer(playerid, gRegisterTD[14]), PlayerTextDrawSetString(playerid, pRegisterTD[playerid][0], "LD_CHAT:thumbdn"), PlayerTextDrawSetString(playerid, pRegisterTD[playerid][6], "your_password_contain_unnallowed_characters!");
 			}
 			if(y==1){
 				if(GetPVarInt(playerid, "pPassConf") == 1){//DeletePVar(playerid, "pConfirmPass");
 					pRegisterSteps[playerid][rPassword] = 1;
-					TextDrawShowForPlayer(playerid, gLoginTD[15]), TextDrawShowForPlayer(playerid, gLoginTD[16]), PlayerTextDrawSetString(playerid, pLoginTD[playerid][1], "LD_CHAT:thumbdn");
+					TextDrawShowForPlayer(playerid, gRegisterTD[15]), TextDrawShowForPlayer(playerid, gRegisterTD[16]), PlayerTextDrawSetString(playerid, pRegisterTD[playerid][1], "LD_CHAT:thumbdn");
 				}
 				return 1;
 			}
-			PlayerTextDrawHide(playerid, pLoginTD[playerid][6]), TextDrawHideForPlayer(playerid, gLoginTD[14]), PlayerTextDrawSetString(playerid, pLoginTD[playerid][0], "LD_CHAT:thumbup"), pRegisterSteps[playerid][rPassword] = 1;
+			PlayerTextDrawHide(playerid, pRegisterTD[playerid][6]), TextDrawHideForPlayer(playerid, gRegisterTD[14]), PlayerTextDrawSetString(playerid, pRegisterTD[playerid][0], "LD_CHAT:thumbup"), pRegisterSteps[playerid][rPassword] = 1;
 			SetPVarInt(playerid, "pPassConf", 1);
 			new str[MAX_PASSWORD_LENGTH+1];
 			GetPVarString(playerid, "pConfirmPass", str, sizeof(str));
 			if(!isnull(str) && strcmp(inputtext, str)){
-				TextDrawShowForPlayer(playerid, gLoginTD[15]), TextDrawShowForPlayer(playerid, gLoginTD[16]), PlayerTextDrawSetString(playerid, pLoginTD[playerid][1], "LD_CHAT:thumbdn");
+				TextDrawShowForPlayer(playerid, gRegisterTD[15]), TextDrawShowForPlayer(playerid, gRegisterTD[16]), PlayerTextDrawSetString(playerid, pRegisterTD[playerid][1], "LD_CHAT:thumbdn");
 			}
 			if(!strcmp(inputtext, str) && !isnull(str)){
-				TextDrawHideForPlayer(playerid, gLoginTD[15]), TextDrawHideForPlayer(playerid, gLoginTD[16]), PlayerTextDrawSetString(playerid, pLoginTD[playerid][1], "LD_CHAT:thumbup");
+				TextDrawHideForPlayer(playerid, gRegisterTD[15]), TextDrawHideForPlayer(playerid, gRegisterTD[16]), PlayerTextDrawSetString(playerid, pRegisterTD[playerid][1], "LD_CHAT:thumbup");
 			}
 //			DeletePVar(playerid, "pConfirmPass");
 			format(PlayerInfo[playerid][pPassword], 256, "%s", inputtext);
@@ -514,12 +701,12 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 		case DIALOG_CONFIRM_PASSWORD:{
 			if(isnull(inputtext) || GetPVarInt(playerid, "pPassConf") == 0) return 1;
 			else if(!strcmp(inputtext, PlayerInfo[playerid][pPassword])){
-				TextDrawHideForPlayer(playerid, gLoginTD[15]), TextDrawHideForPlayer(playerid, gLoginTD[16]), PlayerTextDrawSetString(playerid, pLoginTD[playerid][1], "LD_CHAT:thumbup"), pRegisterSteps[playerid][rRepeatPassword] = 1;
+				TextDrawHideForPlayer(playerid, gRegisterTD[15]), TextDrawHideForPlayer(playerid, gRegisterTD[16]), PlayerTextDrawSetString(playerid, pRegisterTD[playerid][1], "LD_CHAT:thumbup"), pRegisterSteps[playerid][rRepeatPassword] = 1;
 				SetPVarString(playerid, "pConfirmPass", inputtext);
 				SetPVarInt(playerid, "pPassConf", 1);
 			}
 			else if(strcmp(inputtext, PlayerInfo[playerid][pPassword]) || strlen(inputtext) < 6 || strlen(inputtext) > 25 || strfind(inputtext, "%") != -1){
-				TextDrawShowForPlayer(playerid, gLoginTD[15]), TextDrawShowForPlayer(playerid, gLoginTD[16]), PlayerTextDrawSetString(playerid, pLoginTD[playerid][1], "LD_CHAT:thumbdn"), pRegisterSteps[playerid][rRepeatPassword] = 0;
+				TextDrawShowForPlayer(playerid, gRegisterTD[15]), TextDrawShowForPlayer(playerid, gRegisterTD[16]), PlayerTextDrawSetString(playerid, pRegisterTD[playerid][1], "LD_CHAT:thumbdn"), pRegisterSteps[playerid][rRepeatPassword] = 0;
 				SetPVarString(playerid, "pConfirmPass", inputtext);
 			}
 			return 1;
@@ -528,35 +715,35 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 			if(IsValidEmailAddress(inputtext) && strfind(inputtext, "%") && !isnull(inputtext)){
 				PlayerInfo[playerid][pEmail] = EOS;
 				strcat(PlayerInfo[playerid][pEmail], inputtext);
-				PlayerTextDrawShow(playerid, pLoginTD[playerid][2]), PlayerTextDrawSetString(playerid, pLoginTD[playerid][2], "LD_CHAT:thumbup"), pRegisterSteps[playerid][rEmail] = 1;
-				TextDrawHideForPlayer(playerid, gLoginTD[17]), TextDrawHideForPlayer(playerid, gLoginTD[18]);
-//				TextDrawShowForPlayer(playerid, gLoginTD[17]), TextDrawShowForPlayer(playerid, gLoginTD[18]);
+				PlayerTextDrawShow(playerid, pRegisterTD[playerid][2]), PlayerTextDrawSetString(playerid, pRegisterTD[playerid][2], "LD_CHAT:thumbup"), pRegisterSteps[playerid][rEmail] = 1;
+				TextDrawHideForPlayer(playerid, gRegisterTD[17]), TextDrawHideForPlayer(playerid, gRegisterTD[18]);
+//				TextDrawShowForPlayer(playerid, gRegisterTD[17]), TextDrawShowForPlayer(playerid, gRegisterTD[18]);
 			}
 			else{
-				TextDrawShowForPlayer(playerid, gLoginTD[17]), TextDrawShowForPlayer(playerid, gLoginTD[18]);
-				PlayerTextDrawShow(playerid, pLoginTD[playerid][2]), PlayerTextDrawSetString(playerid, pLoginTD[playerid][2], "LD_CHAT:thumbdn"), pRegisterSteps[playerid][rEmail] = 0;
+				TextDrawShowForPlayer(playerid, gRegisterTD[17]), TextDrawShowForPlayer(playerid, gRegisterTD[18]);
+				PlayerTextDrawShow(playerid, pRegisterTD[playerid][2]), PlayerTextDrawSetString(playerid, pRegisterTD[playerid][2], "LD_CHAT:thumbdn"), pRegisterSteps[playerid][rEmail] = 0;
 			}
 		}
 		case DIALOG_AGE:{
 			if(isnull(inputtext)) return 1;
 			new a = strval(inputtext);
-			if(IsANumber(inputtext) && a > 9 && a < 99) PlayerTextDrawSetString(playerid, pLoginTD[playerid][3], "LD_CHAT:thumbup"), TextDrawHideForPlayer(playerid, gLoginTD[19]), TextDrawHideForPlayer(playerid, gLoginTD[20]), PlayerInfo[playerid][pAge] = strval(inputtext), pRegisterSteps[playerid][rAge] = 1;
-			else PlayerTextDrawSetString(playerid, pLoginTD[playerid][3], "LD_CHAT:thumbdn"), TextDrawShowForPlayer(playerid, gLoginTD[19]), TextDrawShowForPlayer(playerid, gLoginTD[20]), pRegisterSteps[playerid][rAge] = 0;
+			if(IsANumber(inputtext) && a > 9 && a < 99) PlayerTextDrawSetString(playerid, pRegisterTD[playerid][3], "LD_CHAT:thumbup"), TextDrawHideForPlayer(playerid, gRegisterTD[19]), TextDrawHideForPlayer(playerid, gRegisterTD[20]), PlayerInfo[playerid][pAge] = strval(inputtext), pRegisterSteps[playerid][rAge] = 1;
+			else PlayerTextDrawSetString(playerid, pRegisterTD[playerid][3], "LD_CHAT:thumbdn"), TextDrawShowForPlayer(playerid, gRegisterTD[19]), TextDrawShowForPlayer(playerid, gRegisterTD[20]), pRegisterSteps[playerid][rAge] = 0;
 		}
 		case DIALOG_GENDER:{
 			if(response)
 			{
 				if(PlayerInfo[playerid][pGender] != 1) PlayerInfo[playerid][pSkin][1] = 0;
 				PlayerInfo[playerid][pGender] = 1;
-				PlayerTextDrawHide(playerid, pLoginTD[playerid][4]), PlayerTextDrawSetPreviewModel(playerid, pLoginTD[playerid][4], CivilSkins[0][PlayerInfo[playerid][pSkin][1]]), PlayerTextDrawShow(playerid, pLoginTD[playerid][4]);
+				PlayerTextDrawHide(playerid, pRegisterTD[playerid][4]), PlayerTextDrawSetPreviewModel(playerid, pRegisterTD[playerid][4], CivilSkins[0][PlayerInfo[playerid][pSkin][1]]), PlayerTextDrawShow(playerid, pRegisterTD[playerid][4]);
 			}
 			if(!response)
 			{
 				if(PlayerInfo[playerid][pGender] != 2) PlayerInfo[playerid][pSkin][1] = 0;
 				PlayerInfo[playerid][pGender] = 2;
-				PlayerTextDrawHide(playerid, pLoginTD[playerid][4]), PlayerTextDrawSetPreviewModel(playerid, pLoginTD[playerid][4], CivilSkins[1][PlayerInfo[playerid][pSkin][1]]), PlayerTextDrawShow(playerid, pLoginTD[playerid][4]);
+				PlayerTextDrawHide(playerid, pRegisterTD[playerid][4]), PlayerTextDrawSetPreviewModel(playerid, pRegisterTD[playerid][4], CivilSkins[1][PlayerInfo[playerid][pSkin][1]]), PlayerTextDrawShow(playerid, pRegisterTD[playerid][4]);
 			}
-			PlayerTextDrawSetString(playerid, pLoginTD[playerid][5], "LD_CHAT:thumbup"), TextDrawHideForPlayer(playerid, gLoginTD[33]), TextDrawHideForPlayer(playerid, gLoginTD[32]),  pRegisterSteps[playerid][rGender] = 1, PlayerInfo[playerid][pSkin][0] = CivilSkins[PlayerInfo[playerid][pGender]-1][PlayerInfo[playerid][pSkin][1]];
+			PlayerTextDrawSetString(playerid, pRegisterTD[playerid][5], "LD_CHAT:thumbup"), TextDrawHideForPlayer(playerid, gRegisterTD[33]), TextDrawHideForPlayer(playerid, gRegisterTD[32]),  pRegisterSteps[playerid][rGender] = 1, PlayerInfo[playerid][pSkin][0] = CivilSkins[PlayerInfo[playerid][pGender]-1][PlayerInfo[playerid][pSkin][1]];
 		}
 		case DIALOG_LOCATION:{
 			if(response){
@@ -570,9 +757,25 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 			StartTutorialForPlayer(playerid);
 			CancelSelectTextDraw(playerid);
 		}
+		case DIALOG_LOGIN:{
+			if(response){
+				if(strlen(inputtext)>MAX_PASSWORD_LENGTH) return TextDrawShowForPlayer(playerid, gLoginTD[16]);
+				new hashpass[256];
+				WP_Hash(hashpass, sizeof(hashpass), inputtext);
+				PlayerInfo[playerid][pPassword2] = EOS;
+				strcat(PlayerInfo[playerid][pPassword2], hashpass);
+				PlayerTextDrawHide(playerid, pLoginTD[playerid][0]);
+				hashpass[0]=EOS;
+				for(new i; i<strlen(inputtext);i++){
+					strcat(hashpass, ".");
+				}
+				PlayerTextDrawSetString(playerid, pLoginTD[playerid][0], hashpass);
+				PlayerTextDrawShow(playerid, pLoginTD[playerid][0]);
+			}
+		}
 		case DIALOG_INVALID_TEXTDRAW:{
 			if(response){
-				if(PlayerInfo[playerid][pLogged] == 2)SelectTextDraw(playerid, 0xc0cde5FF); // Register Selection
+				if(PlayerInfo[playerid][pLogged] == 2 || PlayerInfo[playerid][pLogged] == 4)SelectTextDraw(playerid, 0xc0cde5FF); // Register Selection
 			}
 			else if(!response && PlayerInfo[playerid][pLogged] == 2) Kick(playerid);
 		}
@@ -580,17 +783,20 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 	return 1;
 }
 SaveNewPlayer(playerid){
+	PlayerInfo[playerid][pScore] = 1;
+	SetPlayerScore(playerid, PlayerInfo[playerid][pScore]);
 	strcat(PlayerInfo[playerid][pNormalName], GetPName(playerid));
 	new HashedPassword[129];
 	WP_Hash(HashedPassword, sizeof(HashedPassword), PlayerInfo[playerid][pPassword]);
 	new string[900];
-	mysql_format(SQL, string, sizeof(string), "INSERT INTO `accounts` (`username`, `password`, `email`, `spawn_location`, `skin`, `age`) VALUES ('%e', '%e', '%e', '%i', '%i', '%i')",
+	mysql_format(SQL, string, sizeof(string), "INSERT INTO `accounts` (`username`, `password`, `email`, `spawn_location`, `skin`, `age`, `score`) VALUES ('%e', '%e', '%e', '%i', '%i', '%i', '%i')",
 	PlayerInfo[playerid][pNormalName],
 	HashedPassword,
 	PlayerInfo[playerid][pEmail],
 	PlayerInfo[playerid][pSpawnLocation],
 	PlayerInfo[playerid][pSkin],
-	PlayerInfo[playerid][pAge]);
+	PlayerInfo[playerid][pAge],
+	PlayerInfo[playerid][pScore]);
 	mysql_query(SQL, string);
 	return 1;
 }
@@ -675,10 +881,10 @@ public StartTutorialForPlayer(playerid){
 			
 			ApplyDynamicActorAnimation(IntroObjects[playerid][0][0], "SHOP", "SHP_GUN_AIM", 4.0, 1, 0, 0, 0, 0);
 			
-			IntroObjects[playerid][1][0] = CreateObject(353, 1665.598022, -804.399658, 56.770793, 0.000000, 0.000000, 48.099945, 300.00); 
-			IntroObjects[playerid][1][1] = CreateObject(353, 1660.330810, -803.809936, 57.030944, -1.799999, -2.700000, 42.699943, 300.00); 
-			IntroObjects[playerid][1][2] = CreateObject(353, 1667.721679, -797.778686, 56.235710, -1.799999, -2.700000, -91.100112, 300.00); 
-			IntroObjects[playerid][1][3] = CreateObject(355, 1670.482421, -800.306213, 56.085571, -36.399993, -10.899998, -123.100021, 300.00);		
+			IntroObjects[playerid][1][0] = CreateDynamicObject(353, 1665.598022, -804.399658, 56.770793, 0.000000, 0.000000, 48.099945); 
+			IntroObjects[playerid][1][1] = CreateDynamicObject(353, 1660.330810, -803.809936, 57.030944, -1.799999, -2.700000, 42.699943); 
+			IntroObjects[playerid][1][2] = CreateDynamicObject(353, 1667.721679, -797.778686, 56.235710, -1.799999, -2.700000, -91.100112); 
+			IntroObjects[playerid][1][3] = CreateDynamicObject(355, 1670.482421, -800.306213, 56.085571, -36.399993, -10.899998, -123.100021);		
 			//===========================Objects Loading + Actors==========================================
 			TutorialTextDrawLoad(playerid, 4, true);
 			for(new i; i<sizeof(IntroTD4[]); i++){
@@ -703,22 +909,52 @@ public StartTutorialForPlayer(playerid){
 		case 6:{
 			InterpolateCameraPos(playerid, 1656.809326, -810.696044, 61.113971, 1665.754638, -786.025451, 57.093769, 9000);
 			InterpolateCameraLookAt(playerid, 1660.348754, -807.624938, 59.370159, 1666.163452, -791.002441, 56.843875, 11000);
+			pTutorialStep[playerid] = 7;
+			SetTimerEx("StartTutorialForPlayer", 11000, false, "i", playerid);
 		}
 		case 7:{  
-			if(PlayerInfo[playerid][pSpawnLocation] == 1){
+			for(new i, j; i<5; i++){
+				if(i==4) j++, i=0;
+				if(j==0){
+					DestroyDynamicActor(IntroObjects[playerid][j][i]);
+				}
+				if(j==1){
+					DestroyDynamicObject(IntroObjects[playerid][j][i]);
+				}
+				if(j==2){
+					DestroyVehicle(IntroObjects[playerid][j][i]);
+					break;
+				}
+			}
+/*			DestroyDynamicActor(IntroObjects[playerid][0][0]);
+			DestroyDynamicActor(IntroObjects[playerid][0][1]);
+			DestroyDynamicActor(IntroObjects[playerid][0][2]);
+			DestroyDynamicActor(IntroObjects[playerid][0][3]);
+			DestroyDynamicObject(IntroObjects[playerid][1][0]);
+			DestroyDynamicObject(IntroObjects[playerid][1][1]);
+			DestroyDynamicObject(IntroObjects[playerid][1][2]);
+			DestroyDynamicObject(IntroObjects[playerid][1][3]);
+			DestroyVehicle(IntroObjects[playerid][2][0]);*/
+			TutorialTextDrawLoad(playerid, 4, false);
+			if(PlayerInfo[playerid][pSpawnLocation] >= 0){
 				new randomspawnlocation = random(2);
-				new Float:SpawnLocationCoords[3];
-				SpawnLocationCoords[0] = SpawnLocations[PlayerInfo[playerid][pSpawnLocation]][randomspawnlocation][0];
-				SpawnLocationCoords[1] = SpawnLocations[PlayerInfo[playerid][pSpawnLocation]][randomspawnlocation][0];
-				SpawnLocationCoords[2] = SpawnLocations[PlayerInfo[playerid][pSpawnLocation]][randomspawnlocation][0];
+				new Float:SpawnLocationCoords[4];
+				SpawnLocationCoords[0] = SpawnLocations[PlayerInfo[playerid][pSpawnLocation] -1][randomspawnlocation][0];
+				SpawnLocationCoords[1] = SpawnLocations[PlayerInfo[playerid][pSpawnLocation] -1][randomspawnlocation][1];
+				SpawnLocationCoords[2] = SpawnLocations[PlayerInfo[playerid][pSpawnLocation] -1][randomspawnlocation][2];
+				SpawnLocationCoords[3] = SpawnLocations[PlayerInfo[playerid][pSpawnLocation] -1][randomspawnlocation][3];
 				SetSpawnInfo(playerid, 0, PlayerInfo[playerid][pSkin], SpawnLocationCoords[0], SpawnLocationCoords[1], SpawnLocationCoords[2], 0, 0, 0, 0, 0, 0, 0);
+				TogglePlayerSpectating(playerid, false);
+				SetPlayerPos(playerid, SpawnLocationCoords[0], SpawnLocationCoords[1], SpawnLocationCoords[2]);
+				SetPlayerVirtualWorld(playerid, 0);
+				SetPlayerInterior(playerid, 0);
+				SetPlayerFacingAngle(playerid, SpawnLocationCoords[3]);
+				PlayerInfo[playerid][pLogged] = 1;
 			}
 		}
 	}
 	return 1;
 }
-#define function%0(%1) \
-		forward%0(%1); public%0(%1)
 #if PawnPlus == 0
 function IntroTextDrawsFunc(playerid, stage)
 {

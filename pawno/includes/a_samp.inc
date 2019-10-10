@@ -242,7 +242,7 @@ native UpdatePlayer3DTextLabelText(playerid, PlayerText3D:id, color, text[]);
 #define DIALOG_STYLE_TABLIST			4
 #define DIALOG_STYLE_TABLIST_HEADERS	5
 
-native ShowPlayerDialog(playerid, dialogid, style, caption[], info[], button1[], button2[]);
+native ShowPlayerDialog(playerid, dialogid, style,const caption[],const info[],const button1[],const button2[]);
 
 // --------------------------------------------------
 // Defines

@@ -22,6 +22,7 @@
 //Libraries
 native WP_Hash(buffer[], len, const str[]);
 #include <a_samp>
+#include <fixes>
 #include <timerfix>
 #include <crashdetect>
 #include <jit>
@@ -34,6 +35,7 @@ native WP_Hash(buffer[], len, const str[]);
 #include <strlib>
 #include <sscanf2>
 #include <Pawn.CMD>
+#include <chrono>
 //
 #include <fly>
 #include <elyps_inc\textdraws>
@@ -48,9 +50,9 @@ native WP_Hash(buffer[], len, const str[]);
     #define strcpy(%0,%1) strcat((%0[0] = EOS, %0), %1)
 #endif*/
 #define MYSQL_HOST	"host"
-#define MYSQL_USER	"user"
+#define MYSQL_USER	"username"
 #define MYSQL_PASS	"password"
-#define MYSQL_DB	"database name"
+#define MYSQL_DB	"database_name"
 #define GM_VERSION	"Elyps"
 #define SCM			SendClientMessage
 #define MAX_PASSWORD_LENGTH 25
@@ -92,12 +94,21 @@ enum RegisterSteps{
 	rAge,
 	rGender
 };
+#define MAX_PLAYER_LICENSES		3
+
+#define PLAYER_CAR_LICENSE		0
+#define PLAYER_MOTO_LICENSE		1
+#define PLAYER_TRUCK_LICENSE	2
 new IsOnDialogSelection[MAX_PLAYERS];
 new pRegisterSteps[MAX_PLAYERS][RegisterSteps];
 enum pInfo{
 	pID,
 	pNormalName[MAX_PLAYER_NAME],
+	pMoney,
 	pScore,
+	pLicense[MAX_PLAYER_LICENSES],
+	Timestamp:pLicenseTimeAcquired[MAX_PLAYER_LICENSES],
+	Timestamp:pLicenseTimeExpire[MAX_PLAYER_LICENSES],
 	pLogged, // 1- Logged/Registred 2- Register Step 3- Intro/Tutorial step
 	pPassword[256],
 	pPassword2[256],
@@ -118,15 +129,10 @@ new pTutorialStep[MAX_PLAYERS],
 };*/
 					  //[a][b][c]
 new Float:SpawnLocations[][][] = {
-<<<<<<< HEAD
 	{{1642.1813,-2238.3936,-2.7150, 186.0318},
 	{1686.0148,-2238.4246,-2.7134, 186.0318}},	// spawn LS cu 1 locatii
 	{{1674.2988,1447.8303,10.7829,264.9921},
 	{1663.8861,1429.2826,10.7880,264.5104}}
-=======
-	{{1642.1813,-2238.3936,-2.7150},
-	{1686.0148,-2238.4246,-2.7134}} // spawn LS cu 2 locatii
->>>>>>> 203e7f17d362d7b5ec956250d3b57c6472104f02
 };
 // ======== End Player Variables =========
 main()
@@ -149,6 +155,23 @@ forward LoadPlayerData(playerid);
 	GetPlayerName(playerid, name, MAX_PLAYER_NAME);
 	return name;
 }
+function SetPlayerCash(playerid, amount){
+	ResetPlayerMoney(playerid);
+	GivePlayerMoney(playerid, amount);
+	PlayerInfo[playerid][pMoney] = amount;
+	return 1;
+}
+stock GetPlayerCash(playerid){
+	return PlayerInfo[playerid][pMoney];
+}
+function GivePlayerCash(playerid, amount){
+	new totalcash;
+	totalcash = GetPlayerCash(playerid) + amount;
+	ResetPlayerMoney(playerid);
+	GivePlayerMoney(playerid, totalcash);
+	PlayerInfo[playerid][pMoney] = totalcash;
+	return 1;
+}
 /*stock strcpy(dest[], src[], size = sizeof(dest))
 {
     dest[0] = EOS;
@@ -161,11 +184,67 @@ stock SetPlayerPosEx(playerid, Float:x, Float:y, Float:z, VirtualWorld = 0, Inte
 	SetPlayerInterior(playerid, Interior);
 	return 1;
 }
+stock ConvertTime(&cts, &ctm=-1,&cth=-1,&ctd=-1,&ctw=-1,&ctmo=-1,&cty=-1)
+{
+    #define PLUR(%0,%1,%2) (%0),((%0) == 1)?((#%1)):((#%2))
+
+    #define CTM_cty 31536000
+    #define CTM_ctmo 2628000
+    #define CTM_ctw 604800
+    #define CTM_ctd 86400
+    #define CTM_cth 3600
+    #define CTM_ctm 60
+
+    #define CT(%0) %0 = cts / CTM_%0; cts %= CTM_%0
+
+    new strii[128];
+
+    if(cty != -1 && (cts/CTM_cty))
+    {
+        CT(cty); CT(ctmo); CT(ctw); CT(ctd); CT(cth); CT(ctm);
+        format(strii, sizeof(strii), "%d %s, %d %s, %d %s, %d %s, %d %s, %d %s, and %d %s",PLUR(cty,"year","years"),PLUR(ctmo,"month","months"),PLUR(ctw,"week","weeks"),PLUR(ctd,"day","days"),PLUR(cth,"hour","hours"),PLUR(ctm,"minute","minutes"),PLUR(cts,"second","seconds"));
+        return strii;
+    }
+    if(ctmo != -1 && (cts/CTM_ctmo))
+    {
+        cty = 0; CT(ctmo); CT(ctw); CT(ctd); CT(cth); CT(ctm);
+        format(strii, sizeof(strii), "%d %s, %d %s, %d %s, %d %s, %d %s, and %d %s",PLUR(ctmo,"month","months"),PLUR(ctw,"week","weeks"),PLUR(ctd,"day","days"),PLUR(cth,"hour","hours"),PLUR(ctm,"minute","minutes"),PLUR(cts,"second","seconds"));
+        return strii;
+    }
+    if(ctw != -1 && (cts/CTM_ctw))
+    {
+        cty = 0; ctmo = 0; CT(ctw); CT(ctd); CT(cth); CT(ctm);
+        format(strii, sizeof(strii), "%d %s, %d %s, %d %s, %d %s, and %d %s",PLUR(ctw,"week","weeks"),PLUR(ctd,"day","days"),PLUR(cth,"hour","hours"),PLUR(ctm,"minute","minutes"),PLUR(cts,"second","seconds"));
+        return strii;
+    }
+    if(ctd != -1 && (cts/CTM_ctd))
+    {
+        cty = 0; ctmo = 0; ctw = 0; CT(ctd); CT(cth); CT(ctm);
+        format(strii, sizeof(strii), "%d %s, %d %s, %d %s, and %d %s",PLUR(ctd,"day","days"),PLUR(cth,"hour","hours"),PLUR(ctm,"minute","minutes"),PLUR(cts,"second","seconds"));
+        return strii;
+    }
+    if(cth != -1 && (cts/CTM_cth))
+    {
+        cty = 0; ctmo = 0; ctw = 0; ctd = 0; CT(cth); CT(ctm);
+        format(strii, sizeof(strii), "%d %s, %d %s, and %d %s",PLUR(cth,"hour","hours"),PLUR(ctm,"minute","minutes"),PLUR(cts,"second","seconds"));
+        return strii;
+    }
+    if(ctm != -1 && (cts/CTM_ctm))
+    {
+        cty = 0; ctmo = 0; ctw = 0; ctd = 0; cth = 0; CT(ctm);
+        format(strii, sizeof(strii), "%d %s, and %d %s",PLUR(ctm,"minute","minutes"),PLUR(cts,"second","seconds"));
+        return strii;
+    }
+    cty = 0; ctmo = 0; ctw = 0; ctd = 0; cth = 0; ctm = 0;
+    format(strii, sizeof(strii), "%d %s", PLUR(cts,"second","seconds"));
+    return strii;
+}
 //=+=+=+=+= Functii utile END =========================
 public OnGameModeInit()
 {
 	//Server Settings
 	UsePlayerPedAnims();
+	DisableInteriorEnterExits();
 //	AddPlayerClass(0,1958.3783,1343.1572,1100.3746,269.1425,-1,-1,-1,-1,-1,-1);
 	SetGameModeText(GM_VERSION);
 	SQL = mysql_connect(MYSQL_HOST, MYSQL_USER, MYSQL_PASS, MYSQL_DB);
@@ -179,8 +258,21 @@ public OnGameModeInit()
 		else printf("Server succesfully connected to MySQL database from the mysql config file!");
 	}
 	else printf("Server succesfully connected to MySQL database!");
+	
+	//TIMERS//
+	SetTimer("OnSecondPlayerUpdate", 1000, true);
+	
 	LoadGlobalTextDraws();
 	LoadMapIcons();
+	LoadBusiness();
+	return 1;
+}
+function OnSecondPlayerUpdate(){
+	foreach(new i:Player){
+		if(PlayerInfo[i][pLogged] == 1){
+			ShowPlayerPrincipalsTD(i, true);
+		}
+	}
 	return 1;
 }
 stock ShowPlayerLoginTXD(playerid, bool:show = true){
@@ -287,6 +379,7 @@ public LoadPlayerData(playerid){
 	cache_get_value_name_int(0, "faction", PlayerInfo[playerid][pFaction]);
 	cache_get_value_name_int(0, "skin", PlayerInfo[playerid][pSkin][0]);
 	cache_get_value_name_int(0, "score", PlayerInfo[playerid][pScore]); SetPlayerScore(playerid, PlayerInfo[playerid][pScore]);
+	cache_get_value_name_int(0, "money", PlayerInfo[playerid][pMoney]); SetPlayerCash(playerid, PlayerInfo[playerid][pMoney]);
 	
 	cache_delete(cache);
 	
@@ -296,12 +389,208 @@ public LoadPlayerData(playerid){
 		case 0:{ // civil
 			new randomm = random(2);
 			SetSpawnInfo(playerid, 0, PlayerInfo[playerid][pSkin][0], SpawnLocations[PlayerInfo[playerid][pSpawnLocation]-1][randomm][0], SpawnLocations[PlayerInfo[playerid][pSpawnLocation]-1][randomm][1], SpawnLocations[PlayerInfo[playerid][pSpawnLocation]-1][randomm][2], SpawnLocations[PlayerInfo[playerid][pSpawnLocation]-1][randomm][3], 0, 0, 0, 0, 0, 0);
+			SetPlayerVirtualWorld(playerid, 0);
+			SetPlayerInterior(playerid, 0);
 		}
 	}
 	TogglePlayerSpectating(playerid, false);
 	TogglePlayerControllable(playerid, true);
 	EnableConsoleMSGsForPlayer(playerid, 0);
 	SpawnPlayer(playerid);
+	ShowPlayerPrincipalsTD(playerid, true);
+}
+stock ShowPlayerPrincipalsTD(playerid, bool:toggle = true){
+	if(toggle == true){
+		new Timestamp:ts = Now(), date[50], time[50];
+		ts += Timestamp:3600 * Timestamp:3;
+		TimeFormat(ts, "%H:%M", time);
+		TimeFormat(ts, "%m/%d/%Y", date);
+		TextDrawSetString(DateTimeTD[0], sprintf("%s", time));
+		TextDrawSetString(DateTimeTD[1], sprintf("%s", date));
+		TextDrawHideForPlayer(playerid, DateTimeTD[0]);
+		TextDrawHideForPlayer(playerid, DateTimeTD[1]);
+		TextDrawShowForPlayer(playerid, DateTimeTD[0]);
+		TextDrawShowForPlayer(playerid, DateTimeTD[1]);
+		TextDrawShowForPlayer(playerid, svLogoTD[0]);
+		
+		PlayerTextDrawSetString(playerid, psvLogoTD[playerid][0], sprintf("%s",  GetPName(playerid)));
+		PlayerTextDrawHide(playerid, psvLogoTD[playerid][0]);
+		PlayerTextDrawShow(playerid, psvLogoTD[playerid][0]);
+	}
+	else{
+		TextDrawHideForPlayer(playerid, DateTimeTD[0]);
+		TextDrawHideForPlayer(playerid, DateTimeTD[1]);
+		PlayerTextDrawHide(playerid, psvLogoTD[playerid][0]);
+	}
+	return 1;
+}
+FormatNumber(number)
+{
+    new numOfPeriods = 0, tmp = number;
+    new str[32];
+    while(tmp > 1000) {
+        tmp = floatround(tmp / 1000, floatround_floor), ++numOfPeriods;
+    }
+    valstr(str, number);
+    new slen = strlen(str);
+    for(new i = 1; i != numOfPeriods + 1; ++i) {
+        strins(str, ",", slen - 3*i);
+    }
+    return str;
+}
+#define MAX_BUSINESS 500
+new TotalBusiness = 0;
+new Iterator:BusinessEnum<MAX_BUSINESS>;
+enum bInfo{
+	bID,
+	bOwned,
+	bMapIconID,
+	bPickupID,
+	bPrice,
+	bFee,
+	bType,
+	bOwner[MAX_PLAYER_NAME],
+	Float:bEXpos,
+	Float:bEYpos,
+	Float:bEZpos,
+	Float:bIXpos,
+	Float:bIYpos,
+	Float:bIZpos,
+	bVW,
+	bINT,
+	bSafe,
+	bName[80],
+	bLocalMapIconID,
+	Text3D:bLocal3DTextID,
+	bLocalPickupID
+}
+new BusinessInfo[MAX_BUSINESS][bInfo];
+LoadBusiness(){
+	new query[100], ExtCoords[80], IntCoords[80], Cache:cache;
+	mysql_format(SQL, query, sizeof(query), "SELECT * FROM `business`");
+	cache = mysql_query(SQL, query);
+	cache_get_row_count(TotalBusiness);
+	if(TotalBusiness > 0){
+		for(new i=1, b=0; i <= TotalBusiness; i++, b++){
+			mysql_format(SQL, query, sizeof(query), "SELECT * FROM `business` WHERE `id` = '%d'");
+			cache_get_value_int(b, "id", BusinessInfo[i][bID]);
+			cache_get_value_name(b, "ExtCoords", ExtCoords);
+			cache_get_value_name(b, "IntCoords", IntCoords);
+			cache_get_value_name(b, "name", BusinessInfo[i][bName]);
+			cache_get_value_name(b, "Owner", BusinessInfo[i][bOwner]);
+			cache_get_value_int(b, "MapIconID", BusinessInfo[i][bMapIconID]);
+			cache_get_value_int(b, "PickupID", BusinessInfo[i][bPickupID]);
+			cache_get_value_int(b, "owned", BusinessInfo[i][bOwned]);
+			cache_get_value_int(b, "type", BusinessInfo[i][bType]); // 1 - DMV 3 - Dealership
+			cache_get_value_int(b, "VirtualWorld", BusinessInfo[i][bVW]);
+			cache_get_value_int(b, "Interior", BusinessInfo[i][bINT]);
+			cache_get_value_int(b, "Price", BusinessInfo[i][bPrice]);
+			cache_get_value_int(b, "EnterFee", BusinessInfo[i][bFee]);
+			cache_get_value_int(b, "bizzSafe", BusinessInfo[i][bSafe]);
+			
+			sscanf(ExtCoords, "p<,>fff", BusinessInfo[i][bEXpos], BusinessInfo[i][bEYpos], BusinessInfo[i][bEZpos]);
+			if(BusinessInfo[i][bType] != 1 || BusinessInfo[i][bType] != 3){
+				sscanf(IntCoords, "p<,>fff", BusinessInfo[i][bIXpos], BusinessInfo[i][bIYpos], BusinessInfo[i][bIZpos]);
+			}
+			BusinessInfo[i][bLocalMapIconID] = CreateDynamicMapIcon(BusinessInfo[i][bEXpos], BusinessInfo[i][bEYpos], BusinessInfo[i][bEZpos], BusinessInfo[i][bMapIconID], 0);
+			BusinessInfo[i][bLocalPickupID] = CreateDynamicPickup(BusinessInfo[i][bPickupID], 1, BusinessInfo[i][bEXpos], BusinessInfo[i][bEYpos], BusinessInfo[i][bEZpos], 0, 0);
+			Iter_Add(BusinessEnum, i);
+			if(BusinessInfo[i][bType] == 1){
+//				strreplace(BusinessInfo[i][bName], "\\n", "\\n"); // Method 2
+				new bname[80], fbizstring[80]; // Method 1
+				for(new x, y, z, lastc; x<strlen(BusinessInfo[i][bName]); x++){
+					format(bname, sizeof(bname), BusinessInfo[i][bName]);
+					y = strfind(BusinessInfo[i][bName], "\\n", false, x);
+					if(y>=1){
+						if(z==0)
+							strdel(bname, y, strlen(BusinessInfo[i][bName])), printf("Y stage 1: %d", y);
+						else{
+							strdel(bname, 0, lastc+2);
+							printf(bname);
+							strdel(bname, strfind(bname, "\\n", false, x), strlen(bname));
+							printf(bname);
+						}
+						format(bname, sizeof(bname), "%s\n", bname);
+						strcat(fbizstring, bname);
+						x=y+1;
+						z++;
+						lastc = y;
+						printf("Z: %d", strfind(BusinessInfo[i][bName], "\\n", false, y+1));
+						if(strfind(BusinessInfo[i][bName], "\\n", false, y+1) == -1){
+							format(bname, sizeof(bname), BusinessInfo[i][bName]);
+							strdel(bname, 0, y+2);
+							printf("cut string: %s", bname);
+							strcat(fbizstring, bname);
+							print(fbizstring);
+							break;
+						}
+					}
+				}
+				BusinessInfo[i][bLocal3DTextID] = CreateDynamic3DTextLabel(fbizstring, 0xf58b4eFF, BusinessInfo[i][bEXpos], BusinessInfo[i][bEYpos], BusinessInfo[i][bEZpos], 300, INVALID_PLAYER_ID, INVALID_VEHICLE_ID, 1, 0, 0);
+				continue;
+			}
+			if(BusinessInfo[i][bOwned] == 1)
+				BusinessInfo[i][bLocal3DTextID] = CreateDynamic3DTextLabel(sprintf("Biz ID: %d\nBiz Name: %s\nBiz Owner: %s", BusinessInfo[i][bID], BusinessInfo[i][bName], BusinessInfo[i][bOwner]), 0xf58b4eFF, BusinessInfo[i][bEXpos], BusinessInfo[i][bEYpos], BusinessInfo[i][bEZpos], 300, INVALID_PLAYER_ID, INVALID_VEHICLE_ID, 1, 0, 0);
+			else strcat(BusinessInfo[i][bName], "{00ff6a}[ For Sale ]"), CreateDynamic3DTextLabel(sprintf("Biz ID: %d\nBiz Name: %s\nBiz Price: %s", BusinessInfo[i][bID], BusinessInfo[i][bName], FormatNumber(BusinessInfo[i][bPrice])), 0xf58b4eFF, BusinessInfo[i][bEXpos], BusinessInfo[i][bEYpos], BusinessInfo[i][bEZpos], 300, INVALID_PLAYER_ID, INVALID_VEHICLE_ID, 1, 0, 0);
+			
+		}
+	}
+	cache_delete(cache);
+	printf("%d business loaded.", TotalBusiness);
+	return 1;
+}
+stock ShowDMVTextDraw(playerid, bool:toggle=true){
+	if(toggle==true){
+		for(new i;i<sizeof(dmvTD);i++){
+			switch(i){
+				case 17..19: continue;
+			}
+			TextDrawShowForPlayer(playerid, dmvTD[i]);
+		}
+		for(new i;i<sizeof(pdmvTD[]);i++){
+			if(i==3 || i==4 || i==5) continue;
+			PlayerTextDrawShow(playerid, pdmvTD[playerid][i]);
+		}
+	}
+	else if(toggle==false){
+		for(new i;i<sizeof(dmvTD);i++){
+			TextDrawHideForPlayer(playerid, dmvTD[i]);
+		}
+		for(new i;i<sizeof(pdmvTD[]);i++){
+			PlayerTextDrawHide(playerid, pdmvTD[playerid][i]);
+		}
+	}
+	return 1;
+}
+CMD:takedrivelicense(playerid){
+	foreach(new i : BusinessEnum){
+		if(IsPlayerInRangeOfPoint(playerid, 10, BusinessInfo[i][bEXpos], BusinessInfo[i][bEYpos], BusinessInfo[i][bEZpos]) && BusinessInfo[i][bType] == 1){
+			ShowDMVTextDraw(playerid, true);
+			if(PlayerInfo[playerid][pLicense][PLAYER_CAR_LICENSE] == 1) PlayerTextDrawHide(playerid, pdmvTD[playerid][0]), PlayerTextDrawSetString(playerid, pdmvTD[playerid][0], "[passed]"), PlayerTextDrawShow(playerid, pdmvTD[playerid][0]);
+			else PlayerTextDrawHide(playerid, pdmvTD[playerid][0]), PlayerTextDrawSetString(playerid, pdmvTD[playerid][0], "[not passed]"), PlayerTextDrawShow(playerid, pdmvTD[playerid][0]);
+			if(PlayerInfo[playerid][pLicense][PLAYER_MOTO_LICENSE] == 1) PlayerTextDrawHide(playerid, pdmvTD[playerid][1]), PlayerTextDrawSetString(playerid, pdmvTD[playerid][1], "[passed]"), PlayerTextDrawShow(playerid, pdmvTD[playerid][1]);
+			else PlayerTextDrawHide(playerid, pdmvTD[playerid][1]), PlayerTextDrawSetString(playerid, pdmvTD[playerid][1], "[not passed]"), PlayerTextDrawShow(playerid, pdmvTD[playerid][1]);
+			if(PlayerInfo[playerid][pLicense][PLAYER_TRUCK_LICENSE] == 1) PlayerTextDrawHide(playerid, pdmvTD[playerid][2]), PlayerTextDrawSetString(playerid, pdmvTD[playerid][2], "[passed]"), PlayerTextDrawShow(playerid, pdmvTD[playerid][2]);
+			else  PlayerTextDrawHide(playerid, pdmvTD[playerid][2]), PlayerTextDrawSetString(playerid, pdmvTD[playerid][2], "[not passed]"), PlayerTextDrawShow(playerid, pdmvTD[playerid][2]);
+			SelectTextDraw(playerid, 0xc0cde5FF);
+			TogglePlayerControllable(playerid, false);
+			Streamer_ToggleItem(playerid, STREAMER_TYPE_3D_TEXT_LABEL, BusinessInfo[i][bLocal3DTextID], false);
+			Streamer_Update(playerid, STREAMER_TYPE_3D_TEXT_LABEL);
+			SetPVarInt(playerid, "PlayerInDMVid", i);
+			SetPVarInt(playerid, "PlayerInBusinessType", 1);
+			break;
+		}
+	}
+	return 1;
+}
+CMD:gotoxyz(playerid, params[]){
+	new Float:pos[3], vw, int, x;
+	if(sscanf(params, "fffii",pos[0], pos[1], pos[2], vw, int)) x+=1; //return SCM(playerid, -1, "Syntax: /gotoxyz <X pos> <Y pos> <Z pos> <virtual world> <int>");
+	if(x==1){
+		if(sscanf(params, "p<,>fffii",pos[0], pos[1], pos[2], vw, int)) return SCM(playerid, -1, "Syntax: /gotoxyz <X pos> <Y pos> <Z pos> <virtual world> <int>");
+	}
+	SetPlayerPosEx(playerid, pos[0], pos[1], pos[2], vw, int);
+	return 1;
 }
 LoadMapIcons(){
 	new Cache:cache, string[100], sum;
@@ -399,6 +688,9 @@ ResetVars(playerid){
 	DeletePVar(playerid, "pPassConf");
 	PlayerInfo[playerid] = t;
 	IsOnDialogSelection[playerid] = 0;
+	ResetPlayerMoney(playerid);
+	InitFly(playerid);
+	DeletePVar(playerid, "PlayerInDMVid");
 }
 public OnPlayerDisconnect(playerid, reason)
 {
@@ -479,9 +771,94 @@ public OnPlayerClickTextDraw(playerid, Text:clickedid)
 		}
 		else TextDrawShowForPlayer(playerid, gLoginTD[16]);
 	}
+	#define DMV_LICENSE_B_PRICE 1410
+	#define DMV_LICENSE_A_PRICE 1315
+	#define DMV_LICENSE_C_PRICE 1500
+	else if(clickedid == dmvTD[5]){
+		if(PlayerInfo[playerid][pLicense][PLAYER_CAR_LICENSE] == 1){
+			for(new i=17;i<=17+3;i++){
+				TextDrawShowForPlayer(playerid, dmvTD[i]);
+			}
+			PlayerTextDrawHide(playerid, pdmvTD[playerid][3]);
+			PlayerTextDrawSetString(playerid, pdmvTD[playerid][4], "You already own a B license.");
+			new Seconds:days_ago, Seconds:days_after, Timestamp:today = Now(), mins, hours, Timestamp:days1, Timestamp:days2, str1[130], str2[130];
+			days_ago = today - PlayerInfo[playerid][pLicenseTimeAcquired][PLAYER_CAR_LICENSE];
+			days_after = PlayerInfo[playerid][pLicenseTimeExpire][PLAYER_CAR_LICENSE] - today;
+			ConvertTime(_:days_ago, mins, hours, _:days1);
+			ConvertTime(_:days_after, mins, hours, _:days2);
+			TimeFormat(days1, "%m/%d/%Y", str1);
+			TimeFormat(days2, "%m/%d/%Y", str2);
+			PlayerTextDrawSetString(playerid, pdmvTD[playerid][5], sprintf("Your_license_info:~n~~n~Acquired_on:_%s(%d_days_ago)~n~~n~Expire_on:_%s(%d_days_remaining)", str1, _:days1, str2, _:days2));
+			PlayerTextDrawShow(playerid, pdmvTD[playerid][4]);
+			PlayerTextDrawShow(playerid, pdmvTD[playerid][5]);
+		}
+		else{
+			SetPVarInt(playerid, "dmvPrice", DMV_LICENSE_B_PRICE);
+			PlayerTextDrawHide(playerid, pdmvTD[playerid][3]);
+			PlayerTextDrawSetString(playerid, pdmvTD[playerid][3], sprintf("Price:_%s$", FormatNumber(DMV_LICENSE_B_PRICE)));
+			PlayerTextDrawShow(playerid, pdmvTD[playerid][3]);
+		}
+	}
+	else if(clickedid == dmvTD[6]){
+		if(PlayerInfo[playerid][pLicense][PLAYER_MOTO_LICENSE] == 1){
+			for(new i=17;i<=17+3;i++){
+				TextDrawShowForPlayer(playerid, dmvTD[i]);
+			}
+			PlayerTextDrawHide(playerid, pdmvTD[playerid][3]);
+			PlayerTextDrawSetString(playerid, pdmvTD[playerid][4], "You already own a A license.");
+			new Seconds:days_ago, Seconds:days_after, Timestamp:today = Now(), mins, hours, Timestamp:days1, Timestamp:days2, str1[130], str2[130];
+			days_ago = today - PlayerInfo[playerid][pLicenseTimeAcquired][PLAYER_MOTO_LICENSE];
+			days_after = PlayerInfo[playerid][pLicenseTimeExpire][PLAYER_MOTO_LICENSE] - today;
+			ConvertTime(_:days_ago, mins, hours, _:days1);
+			ConvertTime(_:days_after, mins, hours, _:days2);
+			TimeFormat(days1, "%m/%d/%Y", str1);
+			TimeFormat(days2, "%m/%d/%Y", str2);
+			PlayerTextDrawSetString(playerid, pdmvTD[playerid][5], sprintf("Your_license_info:~n~~n~Acquired_on:_%s(%d_days_ago)~n~~n~Expire_on:_%s(%d_days_remaining)", str1, _:days1, str2, _:days2));
+			PlayerTextDrawShow(playerid, pdmvTD[playerid][4]);
+			PlayerTextDrawShow(playerid, pdmvTD[playerid][5]);
+		}
+		else{
+			SetPVarInt(playerid, "dmvPrice", DMV_LICENSE_A_PRICE);
+			PlayerTextDrawHide(playerid, pdmvTD[playerid][3]);
+			PlayerTextDrawSetString(playerid, pdmvTD[playerid][3], sprintf("Price:_%s$", FormatNumber(DMV_LICENSE_A_PRICE)));
+			PlayerTextDrawShow(playerid, pdmvTD[playerid][3]);
+		}
+	}
+	else if(clickedid == dmvTD[7]){
+		if(PlayerInfo[playerid][pLicense][PLAYER_TRUCK_LICENSE] == 1){
+			for(new i=17;i<=17+3;i++){
+				TextDrawShowForPlayer(playerid, dmvTD[i]);
+			}
+			PlayerTextDrawHide(playerid, pdmvTD[playerid][3]);
+			PlayerTextDrawSetString(playerid, pdmvTD[playerid][4], "You already own a C license.");
+			new Seconds:days_ago, Seconds:days_after, Timestamp:today = Now(), mins, hours, Timestamp:days1, Timestamp:days2, str1[130], str2[130];
+			days_ago = today - PlayerInfo[playerid][pLicenseTimeAcquired][PLAYER_TRUCK_LICENSE];
+			days_after = PlayerInfo[playerid][pLicenseTimeExpire][PLAYER_TRUCK_LICENSE] - today;
+			ConvertTime(_:days_ago, mins, hours, _:days1);
+			ConvertTime(_:days_after, mins, hours, _:days2);
+			TimeFormat(days1, "%m/%d/%Y", str1);
+			TimeFormat(days2, "%m/%d/%Y", str2);
+			PlayerTextDrawSetString(playerid, pdmvTD[playerid][5], sprintf("Your_license_info:~n~~n~Acquired_on:_%s(%d_days_ago)~n~~n~Expire_on:_%s(%d_days_remaining)", str1, _:days1, str2, _:days2));
+			PlayerTextDrawShow(playerid, pdmvTD[playerid][4]);
+			PlayerTextDrawShow(playerid, pdmvTD[playerid][5]);
+		}
+		else{
+			SetPVarInt(playerid, "dmvPrice", DMV_LICENSE_C_PRICE);
+			PlayerTextDrawHide(playerid, pdmvTD[playerid][3]);
+			PlayerTextDrawSetString(playerid, pdmvTD[playerid][3], sprintf("Price:_%s$", FormatNumber(DMV_LICENSE_C_PRICE)));
+			PlayerTextDrawShow(playerid, pdmvTD[playerid][3]);
+		}
+	}
 	else if(clickedid == Text:INVALID_TEXT_DRAW){
 		if(PlayerInfo[playerid][pLogged] == 2) ShowPlayerDialog(playerid, DIALOG_INVALID_TEXTDRAW, DIALOG_STYLE_MSGBOX, "{db2323}!!! {dbdbdb}[warning]:Return to register {db2323}!!!", "It seems that you left from the register step.\nTo return back please click Return or you will be kicked\nfrom the server.", "Return", "Quit");
 		else if(PlayerInfo[playerid][pLogged] == 4) ShowPlayerDialog(playerid, DIALOG_INVALID_TEXTDRAW, DIALOG_STYLE_MSGBOX, "{db2323}!!! {dbdbdb}[warning]:Return to login {db2323}!!!", "It seems that you left from the login step.\nTo return back please click Return or you will be kicked\nfrom the server.", "Return", "Quit");
+		if(GetPVarInt(playerid, "PlayerInBusinessType") == 1){ // DMV
+			TogglePlayerControllable(playerid, true);
+			ShowDMVTextDraw(playerid, false);
+			printf("%d", GetPVarInt(playerid, "PlayerInDMVid"));
+			Streamer_ToggleItem(playerid, STREAMER_TYPE_3D_TEXT_LABEL, BusinessInfo[GetPVarInt(playerid, "PlayerInDMVid")][bLocal3DTextID], true);
+			Streamer_Update(playerid, STREAMER_TYPE_3D_TEXT_LABEL);
+		}
 	}
 /*	if(clickedid == gRegisterTD[7] || clickedid == gRegisterTD[29] || clickedid == gRegisterTD[30]){
 		SCM(playerid, -1, "Test");
@@ -532,6 +909,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 	return 0;
 }
 public OnPlayerCommandPerformed(playerid, cmd[], params[], result, flags){
+	if(PlayerInfo[playerid][pLogged] != 1) return 0;
 	if(result == -1){
 		SCM(playerid, -1, sprintf("{d9d9d9}Command {ffaa80}/%s {d9d9d9}was not found. Please use /help to see server commands!", cmd));
 		return 0;

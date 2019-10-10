@@ -39,7 +39,7 @@ bool:StartFly(playerid)
 {
         if(OnFly[playerid])
         return false;
-    OnFly[playerid] = true;
+		OnFly[playerid] = true;
         new Float:x,Float:y,Float:z;
         GetPlayerPos(playerid,x,y,z);
         SetPlayerPos(playerid,x,y,z+5.0);
